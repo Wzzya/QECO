@@ -22,6 +22,26 @@ def normalize(parameter, minimum, maximum):
     return normalized_parameter
 
 
+def _moving_average(y, window=31):
+    """Uniform moving average for smoother paper-style curves."""
+    y = np.asarray(y, dtype=float)
+    n = len(y)
+    if n < 3:
+        return y.copy()
+    w = max(3, min(int(window), n))
+    kernel = np.ones(w, dtype=float) / w
+    return np.convolve(y, kernel, mode="same")
+
+
+def _style_paper_axis(ax):
+    ax.grid(True, linestyle="--", color="0.3", linewidth=0.85, alpha=0.9)
+    ax.set_axisbelow(True)
+    for spine in ax.spines.values():
+        spine.set_color("black")
+        spine.set_linewidth(1.0)
+    ax.tick_params(axis="both", colors="black")
+
+
 
 def QoE_Function(delay, max_delay, unfinish_task, ue_energy_state, ue_comp_energy, ue_trans_energy, edge_comp_energy, ue_idle_energy):
     
@@ -375,7 +395,8 @@ def train(ue_RL_list, NUM_EPISODE):
 
                 
                 if episode % 200 == 0 and episode != 0:
-                    os.mkdir("models" + "/" + str(episode))
+                    #os.mkdir("models" + "/" + str(episode))
+                    os.makedirs("models/" + str(episode), exist_ok=True)
                     for ue in range(env.n_ue):
                         ue_RL_list[ue].saver.save(ue_RL_list[ue].sess, "models/" + str(episode) +'/'+ str(ue) + "_X_model" +'/model.ckpt', global_step=episode)
                         print("UE", ue, "Network_model_seved\n")
@@ -426,47 +447,87 @@ def train(ue_RL_list, NUM_EPISODE):
                     avg_delay_list_in_episode.append(Cal_Delay(ue_RL_list, episode))
                     avg_energy_list_in_episode.append(Cal_Energy(ue_RL_list, episode))
 
-                    # Create a figure with 4 vertically stacked subplots
+                    # Publication-style figure: smoothed lines, dashed grid, framed legend
+                    plt.rcParams.update(
+                        {
+                            "font.family": "sans-serif",
+                            "font.sans-serif": ["Arial", "DejaVu Sans", "Microsoft YaHei"],
+                            "axes.edgecolor": "black",
+                            "axes.linewidth": 1.0,
+                            "axes.labelsize": 11,
+                            "xtick.labelsize": 10,
+                            "ytick.labelsize": 10,
+                            "legend.frameon": True,
+                            "legend.edgecolor": "black",
+                            "legend.facecolor": "white",
+                        }
+                    )
+
+                    ma_window = max(7, min(51, len(avg_QoE_list) // 15 or 7))
                     fig, axs = plt.subplots(4, 1, figsize=(10, 20))
-                    fig.suptitle('Performance Metrics Over Episodes', fontsize=16, y=0.92)
+                    fig.suptitle("Performance Metrics Over Episodes", fontsize=16, y=0.92)
 
-                    # Subplot for Average QoE
-                    axs[0].plot(avg_QoE_list, marker='o', linestyle='-', color='b', label='Avg QoE')
-                    axs[0].set_title('', fontsize=14)
-                    axs[0].set_ylabel('Average QoE')
-                    axs[0].set_xlabel('Episode')
-                    axs[0].grid(True, linestyle='--', alpha=0.7)
-                    axs[0].legend()
+                    x_q = np.arange(len(avg_QoE_list))
+                    axs[0].plot(
+                        x_q,
+                        _moving_average(avg_QoE_list, ma_window),
+                        linestyle="-",
+                        linewidth=2.0,
+                        color="#1f4e79",
+                        label="Avg QoE",
+                    )
+                    axs[0].set_ylabel("Average QoE")
+                    axs[0].set_xlabel("Episode")
+                    _style_paper_axis(axs[0])
+                    axs[0].legend(loc="lower right", fontsize=10, fancybox=False)
 
-                    # Subplot for Average Delay
-                    axs[1].plot(avg_delay_list, marker='s', linestyle='-', color='g', label='Avg Delay')
-                    axs[1].set_title('', fontsize=14)
-                    axs[1].set_ylabel('Average Delay')
-                    axs[1].set_xlabel('Episode')
-                    axs[1].grid(True, linestyle='--', alpha=0.7)
-                    axs[1].legend()
+                    x_d = np.arange(len(avg_delay_list))
+                    axs[1].plot(
+                        x_d,
+                        _moving_average(avg_delay_list, ma_window),
+                        linestyle="-",
+                        linewidth=2.0,
+                        color="#2e7d32",
+                        label="Avg Delay",
+                    )
+                    axs[1].set_ylabel("Average Delay")
+                    axs[1].set_xlabel("Episode")
+                    _style_paper_axis(axs[1])
+                    axs[1].legend(loc="lower right", fontsize=10, fancybox=False)
 
-                    # Subplot for Energy Consumption
-                    axs[2].plot(energy_cons_list, marker='^', linestyle='-', color='r', label='Energy Cons.')
-                    axs[2].set_title('', fontsize=14)
-                    axs[2].set_ylabel('Energy Consumption')
-                    axs[2].set_xlabel('Episode')
-                    axs[2].grid(True, linestyle='--', alpha=0.7)
-                    axs[2].legend()
+                    x_e = np.arange(len(energy_cons_list))
+                    axs[2].plot(
+                        x_e,
+                        _moving_average(energy_cons_list, ma_window),
+                        linestyle="-",
+                        linewidth=2.0,
+                        color="#c00000",
+                        label="Energy Cons.",
+                    )
+                    axs[2].set_ylabel("Energy Consumption")
+                    axs[2].set_xlabel("Episode")
+                    _style_paper_axis(axs[2])
+                    axs[2].legend(loc="lower right", fontsize=10, fancybox=False)
 
-                    # Subplot for Number of Drops
-                    axs[3].plot(num_drop_list, marker='x', linestyle='-', color='m', label='Num Drops')
-                    axs[3].set_title('', fontsize=14)
-                    axs[3].set_ylabel('Number Drops')
-                    axs[3].set_xlabel('Episode')
-                    axs[3].grid(True, linestyle='--', alpha=0.7)
-                    axs[3].legend()
+                    x_p = np.arange(len(num_drop_list))
+                    axs[3].plot(
+                        x_p,
+                        _moving_average(num_drop_list, ma_window),
+                        linestyle="-",
+                        linewidth=2.0,
+                        color="#7030a0",
+                        label="Num Drops",
+                    )
+                    axs[3].set_ylabel("Number Drops")
+                    axs[3].set_xlabel("Episode")
+                    _style_paper_axis(axs[3])
+                    axs[3].legend(loc="lower right", fontsize=10, fancybox=False)
 
-                    # Save the figure to a file
                     plt.tight_layout()
                     plt.subplots_adjust(top=0.9)
-                    plt.savefig('Performance_Chart.png', dpi=100)
-                    #plt.show()
+                    plt.savefig("Performance_Chart.png", dpi=150)
+                    plt.close(fig)
+                    # plt.show()
 
 
 
